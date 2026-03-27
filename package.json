@@ -12,9 +12,9 @@
 		"@types/webpack": "^5.28.5"
 	},
 	"type": "module",
-	"name": "millennium-plugin-template",
+	"name": "price-account-steam",
 	"version": "1.0.0",
-	"description": "Millennium plugin template",
+	"description": "Steam account value calculator for Millennium",
 	"author": "Millennium",
 	"license": "MIT",
 	"dependencies": {
