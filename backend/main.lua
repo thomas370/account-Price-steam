@@ -4,6 +4,7 @@ local log = require("logger")
 local mill = require("millennium")
 
 local STEAM_API = "https://api.steampowered.com"
+local STORE_API = "https://store.steampowered.com/api"
 
 local function settings_path()
     return mill.get_install_path() .. "/settings.json"
@@ -44,6 +45,41 @@ local function get_api_key()
     return cfg.steam_api_key
 end
 
+function fetch_account_data(steam_id)
+    local key = get_api_key()
+    if not key then return json.encode({ error = "no api key" }) end
+    local url = STEAM_API .. "/IPlayerService/GetOwnedGames/v1/?key=" .. key
+        .. "&steamid=" .. steam_id .. "&include_appinfo=true&include_played_free_games=false&format=json"
+    local r = http.get(url, { timeout = 10 })
+    if r.status ~= 200 then return json.encode({ error = r.status }) end
+    return r.body
+end
+
+function fetch_game_price(app_id)
+    local url = STORE_API .. "/appdetails?appids=" .. tostring(app_id) .. "&filters=price_overview"
+    local r = http.get(url, { timeout = 10 })
+    if r.status ~= 200 then return json.encode({ error = r.status }) end
+    return r.body
+end
+
+function resolve_vanity(vanity)
+    local key = get_api_key()
+    if not key then return json.encode({ error = "no api key" }) end
+    local url = STEAM_API .. "/ISteamUser/ResolveVanityURL/v1/?key=" .. key .. "&vanityurl=" .. vanity
+    local r = http.get(url, { timeout = 10 })
+    if r.status ~= 200 then return json.encode({ error = r.status }) end
+    return r.body
+end
+
+function fetch_player_summary(steam_id)
+    local key = get_api_key()
+    if not key then return json.encode({ error = "no api key" }) end
+    local url = STEAM_API .. "/ISteamUser/GetPlayerSummaries/v2/?key=" .. key .. "&steamids=" .. steam_id
+    local r = http.get(url, { timeout = 10 })
+    if r.status ~= 200 then return json.encode({ error = r.status }) end
+    return r.body
+end
+
 local function on_load()
     log:info("Price-Account-Steam loaded")
     mill.ready()
@@ -58,4 +94,8 @@ return {
     on_unload = on_unload,
     get_settings = get_settings,
     save_settings = save_settings,
+    fetch_account_data = fetch_account_data,
+    fetch_game_price = fetch_game_price,
+    resolve_vanity = resolve_vanity,
+    fetch_player_summary = fetch_player_summary,
 }
