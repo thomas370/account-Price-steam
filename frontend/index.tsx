@@ -3,6 +3,9 @@ import { Millennium, IconsModule, definePlugin, callable } from '@steambrew/clie
 const getSettings = callable<[], string>('get_settings');
 const saveSettings = callable<[{ steam_api_key: string }], string>('save_settings');
 const fetchAccountData = callable<[{ steam_id: string }], string>('fetch_account_data');
+const fetchBulkPrices = callable<[{ ids_json: string }], string>('fetch_bulk_prices');
+const getPriceCache = callable<[], string>('get_price_cache');
+const savePriceCache = callable<[{ cache_json: string }], string>('save_price_cache');
 
 let observer: MutationObserver | null = null;
 let calculating = false;
@@ -146,7 +149,59 @@ async function calculate(steamId: string) {
 		}
 
 		const totalHours = games.reduce((s: number, g: any) => s + (g.playtime_forever || 0), 0);
-		renderWidget(container, { total: 0, count: games.length, hours: totalHours, avg: 0 });
+		let cache: Record<string, number> = {};
+		try { cache = JSON.parse(await getPriceCache()) || {}; } catch {}
+
+		let total = 0;
+		const uncached: number[] = [];
+
+		for (const g of games) {
+			const id = String(g.appid);
+			if (id in cache) total += cache[id];
+			else uncached.push(g.appid);
+		}
+
+		renderWidget(container, {
+			total, count: games.length, hours: totalHours,
+			avg: games.length ? Math.round(total / games.length) : 0,
+			progress: uncached.length ? `Fetching prices... 0/${uncached.length}` : undefined,
+		});
+
+		const BATCH = 50;
+		for (let i = 0; i < uncached.length; i += BATCH) {
+			const batch = uncached.slice(i, i + BATCH);
+			try {
+				const raw = await fetchBulkPrices({ ids_json: JSON.stringify(batch) });
+				const resp = JSON.parse(raw);
+				const items = resp?.response?.store_items || [];
+				for (const item of items) {
+					const id = String(item.appid || item.id);
+					const opts = item.best_purchase_option || (Array.isArray(item.purchase_options) ? item.purchase_options[0] : null);
+					const price = opts?.final_price_in_cents ? opts.final_price_in_cents : 0;
+					cache[id] = price; total += price;
+				}
+				for (const bid of batch) { if (!(String(bid) in cache)) cache[String(bid)] = 0; }
+			} catch {}
+
+			const c2 = findContainer();
+			if (c2) {
+				renderWidget(c2, {
+					total, count: games.length, hours: totalHours,
+					avg: Math.round(total / games.length),
+					progress: `Fetching prices... ${Math.min(i + BATCH, uncached.length)}/${uncached.length}`,
+				});
+			}
+		}
+
+		try { await savePriceCache({ cache_json: JSON.stringify(cache) }); } catch {}
+
+		const c3 = findContainer();
+		if (c3) {
+			renderWidget(c3, {
+				total, count: games.length, hours: totalHours,
+				avg: Math.round(total / games.length),
+			});
+		}
 	} catch {
 		const el = document.getElementById(WID);
 		if (el) el.innerHTML = `<div class="pas-card"><div class="pas-msg">Failed to load account data</div></div>`;
