@@ -10,6 +10,10 @@ local function settings_path()
     return mill.get_install_path() .. "/settings.json"
 end
 
+local function cache_path()
+    return mill.get_install_path() .. "/prices_cache.json"
+end
+
 local function read_file(path)
     local f = io.open(path, "r")
     if not f then return nil end
@@ -62,6 +66,30 @@ function fetch_game_price(app_id)
     return r.body
 end
 
+function fetch_bulk_prices(ids_json)
+    local ids = json.decode(ids_json)
+    local parts = {}
+    for _, id in ipairs(ids) do
+        table.insert(parts, '{"appid":' .. tostring(id) .. '}')
+    end
+    local input = '{"ids":[' .. table.concat(parts, ",") .. '],"context":{"country_code":"US","language":"english"},"data_request":{"include_all_purchase_options":true}}'
+    local url = STEAM_API .. "/IStoreBrowseService/GetItems/v1/?input_json=" .. input
+    local r = http.get(url, { timeout = 15 })
+    if r.status ~= 200 then return json.encode({ error = r.status }) end
+    return r.body
+end
+
+function get_price_cache()
+    local s = read_file(cache_path())
+    if not s then return json.encode({}) end
+    return s
+end
+
+function save_price_cache(cache_json)
+    write_file(cache_path(), cache_json)
+    return cache_json
+end
+
 function resolve_vanity(vanity)
     local key = get_api_key()
     if not key then return json.encode({ error = "no api key" }) end
@@ -96,6 +124,9 @@ return {
     save_settings = save_settings,
     fetch_account_data = fetch_account_data,
     fetch_game_price = fetch_game_price,
+    fetch_bulk_prices = fetch_bulk_prices,
+    get_price_cache = get_price_cache,
+    save_price_cache = save_price_cache,
     resolve_vanity = resolve_vanity,
     fetch_player_summary = fetch_player_summary,
 }
